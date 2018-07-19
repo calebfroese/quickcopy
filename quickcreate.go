@@ -1,16 +1,17 @@
 package main
 
 import (
-	"bufio"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
+	"path"
 	"strings"
 )
 
-var source = flag.String("source", "./tsconfig.json", "Source tsconfig json file")
+var source = flag.String("source", "./tsconfig.lib.json", "Source tsconfig json file")
+var destination = flag.String("destination", "./tsconfig.lib.json", "Destination tsconfig json file")
 var libs = flag.String("libs", "./libs", "the folder to iterate")
 
 func main() {
@@ -18,27 +19,30 @@ func main() {
 	fmt.Println("Creating files")
 
 	f := readSource(*source)
-	libs := readFolders(*libs)
+	folders := readFolders(*libs)
+	modified := []string{}
 
-	for _, f := range libs {
-		if !strings.Contains(f.Name(), ".") {
-
-			fmt.Println(f.Name())
+	for _, folder := range folders {
+		if !strings.Contains(folder.Name(), ".") {
+			folderName := folder.Name()
+			modified = append(modified, folderName)
+			lines := strings.Split(string(f), "\n")
+			for i, line := range lines {
+				if strings.Contains(line, "outDir") {
+					lines[i] = `    "outDir": "../../dist/out-tsc/libs/` + folderName + `",`
+				}
+			}
+			output := strings.Join(lines, "\n")
+			newpath := path.Join(*libs, folder.Name(), *destination)
+			ioutil.WriteFile(newpath, []byte(output), 0644)
 		}
 	}
 
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if strings.Contains(line, "outDir") {
-			fmt.Println(line)
-		}
-	}
+	fmt.Println(modified, "created")
 }
 
-func readSource(path string) (f *os.File) {
-	f, err := os.Open(path)
-	defer f.Close()
+func readSource(path string) (f []byte) {
+	f, err := ioutil.ReadFile(path)
 	if err != nil {
 		log.Fatal(err)
 	}
