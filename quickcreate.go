@@ -15,10 +15,54 @@ var destination = flag.String("destination", "./tsconfig.lib.json", "Destination
 var libs = flag.String("libs", "./libs", "the folder to iterate")
 
 func main() {
+	fn := os.Args[1]
 	flag.Parse()
-	fmt.Println("Creating files")
+	switch {
+	case fn == "tsconfig":
+		tsconfig()
+	case fn == "index":
+		index()
+	default:
+		log.Fatal("Please provide one of tsconfig,index")
+	}
+	if fn != "" {
+		fmt.Println(fn)
+		return
+	}
+}
 
-	f := readSource(*source)
+func index() {
+	folders := readFolders(*libs)
+	for _, folder := range folders {
+		if !strings.Contains(folder.Name(), ".") {
+			// move the file
+			folderName := folder.Name()
+			oldpath := path.Join(*libs, folderName, "index.ts")
+			newpath := path.Join(*libs, folderName, "src", "index.ts")
+			fmt.Println(oldpath, newpath)
+			err := os.Rename(oldpath, newpath)
+			if err != nil {
+				fmt.Println("An error occurred")
+				log.Fatal(err)
+			}
+
+			// update the contents
+			fmt.Println("Updating index.ts contents")
+			lines := readSource(newpath)
+			replacer := strings.NewReplacer("/src", "")
+			for i, line := range lines {
+				if strings.Contains(line, "/src") {
+					lines[i] = replacer.Replace(line)
+				}
+			}
+			output := strings.Join(lines, "\n")
+			ioutil.WriteFile(newpath, []byte(output), 0644)
+		}
+	}
+}
+
+func tsconfig() {
+	lines := readSource(*source)
 	folders := readFolders(*libs)
 	modified := []string{}
 
@@ -26,7 +70,6 @@ func main() {
 		if !strings.Contains(folder.Name(), ".") {
 			folderName := folder.Name()
 			modified = append(modified, folderName)
-			lines := strings.Split(string(f), "\n")
 			for i, line := range lines {
 				if strings.Contains(line, "outDir") {
 					lines[i] = `    "outDir": "../../dist/out-tsc/libs/` + folderName + `",`
@@ -41,12 +84,12 @@ func main() {
 	fmt.Println(modified, "created")
 }
 
-func readSource(path string) (f []byte) {
+func readSource(path string) []string {
 	f, err := ioutil.ReadFile(path)
 	if err != nil {
 		log.Fatal(err)
 	}
-	return
+	return strings.Split(string(f), "\n")
 }
 
 func readFolders(path string) (folders []os.FileInfo) {
